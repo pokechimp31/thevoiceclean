@@ -460,7 +460,7 @@ body { background:var(--bg); }
       const code = data.daily.weathercode[0];
       const hi   = Math.round(data.daily.temperature_2m_max[0]);
       const lo   = Math.round(data.daily.temperature_2m_min[0]);
-      document.getElementById('weather-day-label').textContent = days[target.getDay()];
+      document.getElementById('weather-day-label').textContent = `NEXT SCHOOL DAY · ${days[target.getDay()].toUpperCase()}`;
       document.getElementById('weather-icon').textContent  = weatherIcon(code);
       document.getElementById('weather-temp').textContent  = `${hi}°`;
       document.getElementById('weather-desc').textContent  = `${weatherDesc(code)} · Low ${lo}°F`;
