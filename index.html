@@ -292,6 +292,7 @@ body { background:var(--bg); }
 @media(max-width:900px){ .masthead-inner { gap:12px; padding:16px; } .masthead-lunch,.masthead-weather { min-height:90px; padding:12px 8px; } .masthead-lunch-text { font-size:25px; } .weather-temp { font-size:31px; } .masthead-meta { font-size:14px; } }
 @media(max-width:480px){ .masthead-logo { width:48px; height:48px; } .masthead-title { font-size:1.8rem; } .masthead-lunch-text { font-size:23px; } .weather-temp { font-size:28px; } .masthead-meta { font-size:13px; } .weather-desc { display:block; font-size:11px; } }
 
+.accordion-actions{display:flex;gap:10px;justify-content:flex-end;margin:12px 0}.accordion-actions button,.replay-tour{background:transparent;border:1px solid var(--border);padding:6px 10px;font:12px var(--font-ui);cursor:pointer;color:var(--text)}.empty-news{color:var(--text-muted);font:14px var(--font-ui);margin:12px 0 28px}.published-at{font:12px var(--font-ui);color:var(--text-muted);text-align:center}.replay-tour{display:block;margin:20px auto}.replay-tour[hidden],.tour-overlay[hidden]{display:none}.tour-overlay{position:fixed;inset:0;z-index:9998;pointer-events:none}.tour-shade{position:absolute;inset:0;background:rgba(0,0,0,.65);pointer-events:auto}.masthead.tour-masthead{z-index:9999!important}.tour-target{position:relative!important;z-index:9999!important;box-shadow:0 0 0 5px #b51232,0 0 0 9999px rgba(0,0,0,.0);background:var(--bg-card)}.tour-card{position:fixed;z-index:10000;background:#fff;border:2px solid #b51232;padding:18px;box-shadow:0 8px 30px #0004;pointer-events:auto;font-family:var(--font-ui);color:#242424}.tour-card h3{font-size:17px;margin:5px 0}.tour-card p{font-size:13px;line-height:1.5}.tour-card small{color:#746f69}.tour-buttons{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}.tour-buttons button{border:1px solid #c9c5bf;background:white;padding:7px 10px;cursor:pointer}.tour-buttons button:last-child{background:#b51232;color:white;border-color:#b51232}
 </style>
 </head>
 <body>
@@ -335,7 +336,7 @@ body { background:var(--bg); }
 </header>
 
 <main class="page">
-  <div id="app"><div class="loading">Loading The Voice…</div></div>
+  <div id="app"><div class="loading">Loading The Voice…</div></div><p id="published-at" class="published-at" aria-live="polite"></p><button id="replay-tour" class="replay-tour" onclick="startTour()" hidden>Replay site walkthrough</button>
   <footer class="footer" style="margin-top:48px">
     <p>The Voice · The Pennington School</p>
     <p style="margin-top:6px">Day students staying home sick: have a parent call <strong>609-737-1838</strong> or email <a href="mailto:mary.heaton@pennington.org">Mrs. Heaton</a>.</p>
@@ -622,13 +623,14 @@ body { background:var(--bg); }
     return `<div class="alert-banner" role="alert"><span>📢</span><span>${esc(al.text)}</span></div>`;
   }
   function buildDeadlines(deadlines) {
-    if (!deadlines.length) return '';
+    if (!deadlines.length) return '<div class="section-label">Upcoming deadlines</div><p class="empty-news">No upcoming deadlines listed.</p>'; 
     return `<div class="section-label">Upcoming deadlines</div><div class="deadlines-grid">${
       deadlines.map(d=>`<div class="deadline-card"><div class="deadline-date">${esc(d.date_label)}</div><div class="deadline-title">${esc(d.title)}</div></div>`).join('')
     }</div>`;
   }
   function buildSections(sections, stories) {
-    return sections.map((sec, i) => {
+    if(!stories.length)return '<div class="section-label">Announcements</div><p class="empty-news">No announcements have been posted yet.</p>';
+    return `<div class="accordion-actions"><button onclick="setAllAccordions(true)">Expand all</button><button onclick="setAllAccordions(false)">Collapse all</button></div>`+sections.map((sec, i) => {
       const secStories = stories.filter(s => s.section_id === sec.id);
       if (!secStories.length) return '';
       const items = secStories.map(s => `
@@ -656,6 +658,25 @@ body { background:var(--bg); }
     }).join('');
   }
 
+  function setAllAccordions(open){document.querySelectorAll('.accordion-item').forEach(item=>{const btn=item.querySelector('.accordion-trigger'),body=item.querySelector('.accordion-body');item.classList.toggle('open',open);btn.setAttribute('aria-expanded',String(open));body.style.maxHeight=open?body.scrollHeight+'px':'0';});}
+  function showPublicationTime(){const el=document.getElementById('published-at');const stamp=localStorage.getItem('voice-last-published'); // Local browser timestamps are not authoritative publication metadata.
+    el.textContent=document.getElementById('issue-meta').textContent ? 'Current issue: '+document.getElementById('issue-meta').textContent : 'Publication timestamp unavailable';document.getElementById('replay-tour').hidden=false;}
+  const tourSteps=[
+    ['.masthead-lunch','Today’s lunch','The daily lunch menu appears here.'],
+    ['#issue-meta','School day and rotation','Find the issue date, day label, and rotation here.'],
+    ['.masthead-weather','Weather forecast','See the forecast for the next school day.'],
+    ['#poll-tab','Daily poll','Open the poll here to cast your vote.'],
+    ['.accordion-trigger','Read announcements','Click an announcement to expand it and read the full story.'],
+    ['#app','Explore The Voice','Browse quick links, deadlines, and announcements below.']
+  ];
+  let tourIndex=0;
+  function startTour(){if(!newsletterReady)return;tourIndex=0;document.getElementById('tour-overlay').hidden=false;showTourStep();}
+  function endTour(){document.getElementById('tour-overlay').hidden=true;document.querySelectorAll('.tour-target').forEach(e=>e.classList.remove('tour-target'));document.querySelector('.masthead').classList.remove('tour-masthead');localStorage.setItem('voice-tour-v1','done');}
+  function showTourStep(){document.querySelectorAll('.tour-target').forEach(e=>e.classList.remove('tour-target'));let [selector,title,description]=tourSteps[tourIndex];let target=document.querySelector(selector);if(!target || (selector==='.accordion-trigger' && !document.querySelector('.accordion-trigger'))){if(tourIndex<tourSteps.length-1){tourIndex++;return showTourStep();}return endTour();}
+    target.classList.add('tour-target');document.querySelector('.masthead').classList.toggle('tour-masthead',!!target.closest('.masthead'));target.scrollIntoView({block:'center',behavior:'instant'});const box=document.getElementById('tour-card');document.getElementById('tour-title').textContent=title;document.getElementById('tour-description').textContent=description;document.getElementById('tour-count').textContent=`${tourIndex+1} of ${tourSteps.length}`;document.getElementById('tour-back').disabled=tourIndex===0;document.getElementById('tour-next').textContent=tourIndex===tourSteps.length-1?'Finish':'Next →';
+    const rect=target.getBoundingClientRect(),width=Math.min(320,innerWidth-24);box.style.width=width+'px';box.style.left=Math.max(12,Math.min(innerWidth-width-12,rect.left))+'px';box.style.top=(rect.bottom+box.offsetHeight+12<innerHeight?rect.bottom+10:Math.max(12,rect.top-box.offsetHeight-10))+'px';}
+  function tourMove(n){if(tourIndex+n>=tourSteps.length)return endTour();tourIndex=Math.max(0,tourIndex+n);showTourStep();}
+  window.addEventListener('resize',()=>{if(!document.getElementById('tour-overlay').hidden)showTourStep();});
   // ── Main ──────────────────────────────────────────────────────
   async function load() {
     const [issues, links, alerts, deadlines, sections, stories] = await Promise.all([
@@ -676,7 +697,7 @@ body { background:var(--bg); }
       buildDeadlines(deadlines),
       buildSections(sections, stories),
     ].join('');
-    initAccordions();
+    initAccordions(); showPublicationTime(); if(!localStorage.getItem('voice-tour-v1')) setTimeout(startTour,400);
   }
 
 
@@ -711,5 +732,5 @@ body { background:var(--bg); }
 </style>
 
 
-</body>
+<div id="tour-overlay" class="tour-overlay" hidden><div class="tour-shade"></div><div id="tour-card" class="tour-card" role="dialog" aria-modal="true" aria-labelledby="tour-title"><small id="tour-count"></small><h3 id="tour-title"></h3><p id="tour-description"></p><div class="tour-buttons"><button onclick="endTour()">Skip</button><button id="tour-back" onclick="tourMove(-1)">Back</button><button id="tour-next" onclick="tourMove(1)">Next →</button></div></div></div></body>
 </html>

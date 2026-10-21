@@ -177,6 +177,7 @@
 
   /* SAVE BAR */
   .save-bar{position:fixed;bottom:0;left:0;right:420px;background:var(--card);border-top:1px solid var(--border);padding:12px 24px;display:flex;justify-content:center;gap:12px;z-index:60;box-shadow:0 -4px 16px rgba(0,0,0,.06)}
+  .pv-masthead{display:grid;grid-template-columns:1fr 1.4fr 1fr;gap:8px;border-top:2px solid #242424;border-bottom:2px solid #242424;padding:15px 0;margin-bottom:12px;align-items:center;text-align:center}.pv-masthead>div{display:flex;flex-direction:column;gap:4px;min-width:0}.pv-masthead small{font:600 9px 'DM Sans',sans-serif;letter-spacing:.06em;color:#57534e}.pv-masthead strong{font:700 13px 'Playfair Display',serif;overflow-wrap:anywhere}.pv-brand strong{font-size:25px;color:#b51232}.pv-alert{background:#b51232;color:white;padding:10px;margin:12px 0;font-size:12px}.pv-links{display:flex;gap:6px;flex-wrap:wrap;border-block:1px solid #c9c5bf;padding:10px 0;margin-bottom:14px}.pv-links span{font-size:11px;padding:4px;border:1px solid #c9c5bf}.pv-poll{border:1px solid #c9c5bf;padding:12px;margin:18px 0}.pv-poll-option{border:1px solid #dedbd5;margin-top:7px;padding:6px;font-size:12px}.preview-frame[data-size="mobile"] .pv-masthead{grid-template-columns:1fr 1fr}.preview-frame[data-size="mobile"] .pv-brand{grid-column:1/-1;grid-row:1}.preview-frame[data-size="tablet"] .pv-brand strong{font-size:21px}.preview-frame[data-size="mobile"]{max-width:320px;margin:auto;width:100%}.preview-frame[data-size="tablet"]{max-width:390px;margin:auto;width:100%}
 </style>
 </head>
 <body>
@@ -314,8 +315,8 @@
     <!-- PREVIEW -->
     <div class="admin-preview">
       <div class="preview-header">
-        <span class="preview-title">Live Preview</span>
-        <button class="btn btn-secondary btn-sm" onclick="renderPreview()">↺ Refresh</button>
+        <span class="preview-title">Draft Preview · <span id="draft-status">Saved</span></span>
+        <select id="preview-size" aria-label="Preview size" onchange="document.getElementById('preview-frame').dataset.size=this.value" style="width:auto;padding:5px"><option value="desktop">Desktop</option><option value="tablet">Tablet</option><option value="mobile">Mobile</option></select> <button class="btn btn-secondary btn-sm" onclick="renderPreview()">↺ Refresh</button>
       </div>
       <div class="preview-frame" id="preview-frame">
         <div class="pv-empty">Save or refresh to see preview.</div>
@@ -325,7 +326,7 @@
 
   <div class="save-bar">
     <button class="btn btn-secondary" onclick="loadAll()">↺ Discard changes</button>
-    <button class="btn btn-primary" style="min-width:140px" id="save-btn" onclick="saveAll()">Save all changes</button>
+    <span id="save-state" role="status" style="align-self:center;color:var(--muted)">All changes saved</span><button class="btn btn-primary" style="min-width:140px" id="save-btn" onclick="saveAll()">Save all changes</button>
   </div>
 </div><!-- /admin-screen -->
 
@@ -396,7 +397,7 @@
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('admin-screen').style.display = 'block';
     document.getElementById('user-email').textContent = currentUser?.email || '';
-    loadAll(); loadPollAdmin();
+    loadAll(); loadPollAdmin(); fetchPreviewWeather();
   }
   document.addEventListener('keydown', e => {
     if (e.key === 'Enter' && document.getElementById('login-screen').style.display !== 'none') login();
@@ -433,7 +434,7 @@
       state.sections  = sections.data     || [];
       state.stories   = stories.data      || [];
       renderAll();
-      renderPreview();
+      renderPreview(); setDirty(false);
     } catch(e) { showToast('Failed to load data', true); console.error(e); }
   }
 
@@ -500,7 +501,7 @@
     pollDirty();
   }
 
-  function pollDirty() { _pollDirty = true; }
+  function pollDirty() { _pollDirty = true; setDirty(true); renderPreview(); }
 
   async function savePoll() {
     const question = document.getElementById('poll-question').value.trim();
@@ -522,7 +523,7 @@
         if (error) throw error;
         _pollData = data[0];
       }
-      _pollDirty = false;
+      _pollDirty = false; setDirty(false);
       showToast('Poll saved ✓');
       await loadPollAdmin();
     } catch(e) {
@@ -561,8 +562,8 @@
 
     const ll = document.getElementById('links-list');
     ll.innerHTML = state.links.length ? state.links.map((l,i) => `
-      <div class="list-item">
-        <div class="list-item-body">
+      <div class="list-item" draggable="true" ondragstart="dragStart(event,'links',${i})" ondragover="event.preventDefault()" ondrop="dragDrop(event,'links',${i})">
+        <div class="list-item-body"><span title="Drag to reorder">⠿ </span>
           <div class="list-item-title">${esc(l.emoji||'')} ${esc(l.label)}</div>
           <div class="list-item-sub">${esc(l.url)}</div>
         </div>
@@ -574,8 +575,8 @@
 
     const dl = document.getElementById('deadlines-list');
     dl.innerHTML = state.deadlines.length ? state.deadlines.map((d,i) => `
-      <div class="list-item">
-        <div class="list-item-body">
+      <div class="list-item" draggable="true" ondragstart="dragStart(event,'deadlines',${i})" ondragover="event.preventDefault()" ondrop="dragDrop(event,'deadlines',${i})">
+        <div class="list-item-body"><span title="Drag to reorder">⠿ </span>
           <div class="list-item-title">${esc(d.title)}</div>
           <div class="list-item-sub">${esc(d.date_label)}</div>
         </div>
@@ -588,7 +589,7 @@
     const sl = document.getElementById('sections-list');
     sl.innerHTML = state.sections.length ? state.sections.map((sec,si) => {
       const ss = state.stories.filter(s => s.section_id === sec.id);
-      return `<div class="section-item">
+      return `<div class="section-item" draggable="true" ondragstart="dragStart(event,'sections',${si})" ondragover="event.preventDefault()" ondrop="dragDrop(event,'sections',${si})">
         <div class="section-item-header">
           <span class="section-name">${esc(sec.name)}</span>
           <span class="section-stories-count">${ss.length} stor${ss.length===1?'y':'ies'}</span>
@@ -602,13 +603,13 @@
             ? `<span class="p-badge p-badge-important">Important</span>`
             : s.priority==='very_important'
             ? `<span class="p-badge p-badge-very">Very Important</span>` : '';
-          return `<div class="list-item" style="margin-top:8px">
+          return `<div class="list-item" style="margin-top:8px" draggable="true" ondragstart="dragStart(event,'stories',${pi})" ondragover="event.preventDefault()" ondrop="dragDrop(event,'stories',${pi})">
             <div class="list-item-body">
               <div class="list-item-title">${esc(s.title)}${pb}</div>
               <div class="list-item-sub">${esc(s.preview||'')}</div>
             </div>
             <div class="list-item-actions">
-              <button class="btn-icon" onclick="openModal('story',${pi})">✏️</button>
+              <button class="btn-icon" title="Duplicate story" onclick="duplicateStory(${pi})">⧉</button><button class="btn-icon" onclick="openModal('story',${pi})">✏️</button>
               <button class="btn-icon" onclick="removeItem('stories',${pi})">🗑️</button>
             </div>
           </div>`;
@@ -619,10 +620,45 @@
 
   function storyIdx(id) { return state.stories.findIndex(s => s.id === id); }
 
+  let dirty = false, dragItem = null, previewWeather = 'Forecast loading…';
+  function setDirty(value=true) { dirty=value; document.getElementById('save-state').textContent=value?'● Unsaved changes':'All changes saved'; document.getElementById('draft-status').textContent=value?'Unsaved':'Saved'; }
+  window.addEventListener('beforeunload', e=>{ if(dirty || _pollDirty){e.preventDefault();e.returnValue='';} });
+  function syncDraft() {
+    for(const [key,id] of [['issue_date','iss-date'],['day_label','iss-day'],['rotation_day','iss-rotation'],['lunch','iss-lunch']]) state.issue[key]=document.getElementById(id).value;
+    state.alert.enabled=document.getElementById('alert-enabled').checked;
+    state.alert.text=document.getElementById('alert-text').value;
+    setDirty(true);renderPreview();
+  }
+  function dragStart(e,type,index) { dragItem={type,index}; e.dataTransfer.effectAllowed='move'; }
+  function dragDrop(e,type,index) {
+    e.preventDefault(); if(!dragItem || dragItem.type!==type) return;
+    const arr=state[type], from=dragItem.index; dragItem=null;
+    if(from===index)return;
+    if(type==='stories' && arr[from].section_id!==arr[index].section_id)return showToast('Move stories within their section',true);
+    arr.splice(index,0,arr.splice(from,1)[0]);renderAll();renderPreview();setDirty(true);
+  }
+  function duplicateStory(i) {
+    const original=state.stories[i]; if(!original)return;
+    const copy={...original,title:(original.title||'Story')+' (copy)'};delete copy.id;
+    state.stories.splice(i+1,0,copy);renderAll();renderPreview();setDirty(true);showToast('Story duplicated. Save to publish.');
+  }
+  async function fetchPreviewWeather(){
+    try { const d=new Date();let n=d.getDay()===5?3:d.getDay()===6?2:1;d.setDate(d.getDate()+n);
+      const date=[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');
+      const response=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=40.3271&longitude=-74.7899&daily=weathercode,temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&timezone=America/New_York&start_date=${date}&end_date=${date}`);
+      if(!response.ok)throw Error('Weather unavailable');const x=(await response.json()).daily;
+      previewWeather=`${Math.round(x.temperature_2m_max[0])}°F · Low ${Math.round(x.temperature_2m_min[0])}°F`;
+    }catch{previewWeather='Forecast unavailable';} renderPreview();
+  }
+  document.addEventListener('input',e=>{if(['iss-date','iss-day','iss-rotation','iss-lunch','alert-text'].includes(e.target.id))syncDraft();});
+  document.addEventListener('change',e=>{if(e.target.id==='alert-enabled')syncDraft();});
   // ── Preview ───────────────────────────────────────────────────
   function renderPreview() {
     const frame = document.getElementById('preview-frame');
-    let html = '';
+    let html = `<div class="pv-masthead"><div><small>TODAY'S LUNCH</small><strong>${esc(state.issue.lunch||'Not set')}</strong></div><div class="pv-brand"><strong>The Voice</strong><small>${esc([state.issue.issue_date,state.issue.day_label,state.issue.rotation_day].filter(Boolean).join(' · ')||'Issue details not set')}</small></div><div><small>NEXT SCHOOL DAY WEATHER</small><strong>${esc(previewWeather)}</strong></div></div>`;
+    if(state.alert.enabled)html+=`<div class="pv-alert">📢 ${esc(state.alert.text||'Alert text not set')}</div>`;
+    if(state.links.length)html+=`<div class="pv-links">${state.links.map(l=>`<span>${esc(l.emoji||'')} ${esc(l.label)}</span>`).join('')}</div>`;
+    if (!state.deadlines.length)html+='<div class="pv-section-label">Upcoming deadlines</div><div class="pv-empty">No upcoming deadlines listed.</div>';
     if (state.deadlines.length) {
       html += `<div class="pv-section-label">Upcoming deadlines</div>
         <div class="pv-deadline-grid">${state.deadlines.map(d=>`
@@ -659,7 +695,9 @@
       });
       html += `</div>`;
     });
-    if (!html) html = '<div class="pv-empty">No content yet.</div>';
+    if(!state.stories.length)html+='<div class="pv-section-label">Announcements</div><div class="pv-empty">No stories published yet.</div>';
+    const q=document.getElementById('poll-question')?.value||_pollData?.question||'';
+    if(document.getElementById('poll-enabled')?.checked)html+=`<div class="pv-poll"><div class="pv-section-label">Poll of the day · Preview only</div><strong>${esc(q||'Question not set')}</strong>${_pollOptions.map(o=>`<div class="pv-poll-option">${esc(o||'Option not set')}</div>`).join('')}</div>`;
     frame.innerHTML = html;
   }
 
@@ -686,6 +724,7 @@
         dbUpsert('sections',    state.sections),
         dbUpsert('stories',     state.stories),
       ]);
+      setDirty(false); localStorage.setItem('voice-last-published', new Date().toISOString());
       showToast('All changes saved ✓');
       renderPreview();
     } catch(e) { showToast('Save failed — check console', true); console.error(e); }
@@ -699,7 +738,7 @@
     const tbl  = type==='links'?'quick_links':type;
     if (item?.id) await dbDelete(tbl, item.id);
     arr.splice(idx, 1);
-    renderAll(); renderPreview();
+    renderAll(); renderPreview(); setDirty(true);
   }
 
   // ── Rich editor ───────────────────────────────────────────────
@@ -798,21 +837,21 @@
     if (!obj.label||!obj.url) return alert('Label and URL are required.');
     if (editingModal.idx!==null) Object.assign(state.links[editingModal.idx], obj);
     else state.links.push(obj);
-    closeModal(); renderAll(); renderPreview();
+    closeModal(); renderAll(); renderPreview(); setDirty(true);
   }
   function saveDeadline() {
     const obj = { date_label:v('m-date'), title:v('m-title') };
     if (!obj.title) return alert('Title is required.');
     if (editingModal.idx!==null) Object.assign(state.deadlines[editingModal.idx], obj);
     else state.deadlines.push(obj);
-    closeModal(); renderAll(); renderPreview();
+    closeModal(); renderAll(); renderPreview(); setDirty(true);
   }
   function saveSection() {
     const obj = { name:v('m-sname') };
     if (!obj.name) return alert('Name is required.');
     if (editingModal.idx!==null) Object.assign(state.sections[editingModal.idx], obj);
     else state.sections.push({ ...obj, id:'sec_'+Date.now() });
-    closeModal(); renderAll(); renderPreview();
+    closeModal(); renderAll(); renderPreview(); setDirty(true);
   }
   function saveStory() {
     const editor = document.getElementById('rich-editor');
@@ -824,7 +863,7 @@
     if (!obj.title) return alert('Title is required.');
     if (editingModal.idx!==null) Object.assign(state.stories[editingModal.idx], obj);
     else state.stories.push(obj);
-    closeModal(); renderAll(); renderPreview();
+    closeModal(); renderAll(); renderPreview(); setDirty(true);
   }
 
   // ── Utilities ─────────────────────────────────────────────────
